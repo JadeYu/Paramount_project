@@ -1,0 +1,343 @@
+---
+title: "What attributes of a movie are associated with a higher rating on IMDB?"
+output: 
+  html_document: 
+    fig_height: 4
+    highlight: pygments
+    theme: spacelab
+---
+
+## Setup
+
+### Load packages
+
+```{r load-packages, message = FALSE}
+library(ggplot2)
+library(dplyr)
+library(statsr)
+```
+
+### Load data
+
+
+```{r load-data}
+load("movies.Rdata")
+```
+
+* * *
+
+## Part 1: Data
+### Generalizability
+According to the codebook of the data, random sampling is conducted and therefore the result should be generalizable. One possible cause of bias is that the data only includes movies that are posted on Rotten Tomatoes and IMDB, so any bias associated with these two websites will also apply to this data.
+
+### Causality
+This data is observational and therefore does not involve random assignment and cannot be used to infer causality.
+
+* * *
+
+## Part 2: Research question
+
+####Question: what attributes of a movie can be used to build a linear regression model that best predicts the movie's rating on IMDB?
+
+This will answer my boss's question of what makes a movie popular, assuming that popularity can be reflected in its IMDB rating. The process (especially the model diagnostic analysis) will also reveal previously unnoticed correlations among characteristics of movies.
+
+* * *
+
+## Part 3: Exploratory data analysis
+
+###Exploratory analysis of IMDB rating 
+First I want to see the distribution of IMDB rating for all movies in the dataset:
+
+```{r}
+hist(movies$imdb_rating)
+```
+
+From the graph we can see that the distribution is roughly bell-shaped but slightly left skewed. To see more details of this distribution,
+
+```{r}
+movies %>%
+     summarise(min = min(imdb_rating), max = max(imdb_rating), mean = mean(imdb_rating), median = median(imdb_rating), std = sd(imdb_rating))
+```
+From above we can see that the IMDB rating in the dataset ranges from 1.9 to 9, with a mean of 6.49, a median of 6.6 and a standard deviation of 1.08. 
+
+* * *
+
+## Part 4: Modeling
+###Selection of variables
+I propose to include the following variables in the model: IMDB rating, genre, mpaa rating, release month, IMDB number of votes, if nominated for best picture, if won best picture, if won best actor, if won best actress, if won best director, if in top 200 box sales. 
+
+Except for IMDB rating, these are the variables that I think may be directly related to the popularity of a movie. Since I am only interested to predict the IMDB rating, I have excluded the data from Rotten Tomatoes. After all, they are not direct attributes associated with the movies.
+
+###A preliminary screening for the proposed explanatory variables 
+Next I want to see if IMDB rating does vary among the levels (when the explanatory variable is categorical) or is correlated with the value (when the explanatory variable is numeric) of the proposed variables. This part might seem a little lengthy but it is necessary since it saves time and hugely reduces the complexity for model selection. You can jump right to the next section ("The full model") for conclusions.
+
+First for genre:
+
+```{r}
+movies %>%
+  ggplot(aes(x = genre, y = imdb_rating)) +
+  geom_boxplot()
+```
+
+From the boxplot we can see that some genres (e.g. documentary) do seem to have higher ratings than others (e.g. comedy and horror). Therefore genre is a useful variable to include in the regression model later. Next let's look at mpaa_rating:
+
+```{r}
+movies %>%
+  ggplot(aes(x = mpaa_rating, y = imdb_rating)) +
+  geom_boxplot()
+```
+
+From the boxplot it seems that the unrated category has higher ratings than others so it's necessary to include this variable as well. Next let's look at the release month:
+
+```{r}
+movies %>%
+  ggplot(aes(x = as.factor(thtr_rel_month), y = imdb_rating)) +
+  geom_boxplot()
+```
+
+There does not seem to be a clear difference in imdb_rating among different release months. So I will not include this variable in the model later. Next for number of votes:
+
+```{r}
+movies %>%
+  ggplot(aes(x = imdb_num_votes, y = imdb_rating)) +
+  geom_point()
+```
+
+There seems to be a rough positive relationship between number of votes and rating so I will include it in the model. Next for if nominated for best picture:
+
+```{r}
+movies %>%
+  ggplot(aes(x = best_pic_nom, y = imdb_rating)) +
+  geom_boxplot()
+```
+
+Apparently there is a significant difference between movies nominated and those not. So I will include if nominated for best picture in the model. Since if won the best picture must be highly correlated with if nominated, I will only include the latter. Next see if nominated for best actor:
+
+```{r}
+movies %>%
+  ggplot(aes(x = best_actor_win, y = imdb_rating)) +
+  geom_boxplot()
+```
+
+IMDB rating does not seem to be affected by if won best actor so I will not include it. Next for if won best actress:
+
+```{r}
+movies %>%
+  ggplot(aes(x = best_actress_win, y = imdb_rating)) +
+  geom_boxplot()
+```
+
+This variable also does not seem to affect imdb rating much so I will just leave it out of the model. Next for if won best director:
+
+```{r}
+movies %>%
+  ggplot(aes(x = best_dir_win, y = imdb_rating)) +
+  geom_boxplot()
+```
+
+This variable seems to have some effect so I will keep it in the full model. The last variable to look at is if in top 200 of box sales:
+
+```{r}
+movies %>%
+  ggplot(aes(x = top200_box, y = imdb_rating)) +
+  geom_boxplot()
+```
+
+This also seems to have an effect so I will keep it.
+
+###The full model
+
+As a result of the preliminary screening above, I will have the following 6 variables in the full model to start with: genre, mpaa rating, IMDB number of votes, if nominated for best picture, if won best director, if in top 200 of box sales. So the full model will be:
+
+```{r}
+vars = c("genre","mpaa_rating","imdb_num_votes","best_pic_nom","best_dir_win","top200_box")
+Formula = paste("imdb_rating~", paste(vars, collapse="+"),sep="")
+#Formula = "imdb_rating~genre+mpaa_rating+imdb_num_votes+best_pic_nom+best_dir_win+top200_box"
+m_full = lm(data = movies, formula=Formula)
+summary(m_full)
+```
+Notice that I have concatenated the response and independent variables into a string (Formula) that can be passed as the formula argument for the lm function. 
+
+One thing to clarify: this way of screening variables may leave out some variables that could turn out to be significant if included in the full model. But I am taking a strategy to stay "lean" in order to achieve the most parsimonious model. One thing almost for sure is that including these variables will not significantly improve the predictions of the model.
+
+###Model selection
+
+Since my goal is to maximize prediction power which is best quantified by the adjusted R2, I will choose the adjusted-R2-based model selection method. I will choose the backward selection method since it is more natural and easier to implement for me.
+
+Starting from the full model, the following code drops one variable at a time and gives the model with the highest adjusted R2:
+
+```{r}
+adjR2_seq = c()
+for (i in 1:6){
+  #vars contains all the variables names in the full model; vars[-i] drops the ith variable
+  Formula = paste("imdb_rating~", paste(vars[-i], collapse="+"),sep="")
+  model = lm(Formula,data=movies)
+  adjR2_seq = c(adjR2_seq, summary(model)$adj.r.squared)
+  }
+result = data.frame(dropped_variable=vars, adjR2=adjR2_seq)
+result[result$adjR2==max(result$adjR2),]
+```
+
+The result shows that dropping the variable top200_box gives the highest adjusted R2 (0.386) which is also higher than that of the full model (0.385), so I will exclude this variable from the model. Next we will try dropping one more variable:
+
+```{r}
+vars = vars[-6] #drop top200_box
+adjR2_seq = c()
+for (i in 1:5){
+  #vars contains all the variables names in the full model; vars[-i] drops the ith variable
+  Formula = paste("imdb_rating~", paste(vars[-i], collapse="+"),sep="")
+  model = lm(Formula,data=movies)
+  adjR2_seq = c(adjR2_seq, summary(model)$adj.r.squared)
+  }
+result = data.frame(dropped_variable=vars, adjR2=adjR2_seq)
+result[result$adjR2==max(result$adjR2),]
+```
+
+Notice that the optimum adjusted R2 here (0.382) is smaller than previously when there are 5 variables (0.386), so the best model is the previous model (with only top200_box dropped):
+
+```{r}
+Formula = paste("imdb_rating~", paste(vars, collapse="+"),sep="")
+print(Formula)
+best_model = lm(Formula,data=movies)
+```
+
+###Model Diagnostics: Linearity
+
+Now let's see if conditions of linear regression are met for the model selected above.
+
+First check for linear relationships between each of the independent variables and the response variable. Since linearity only applies to two numeric variables, I'll just check this condition for the one numeric explanatory variable (number of votes) and ignore the categorical variables.
+
+```{r}
+plot(movies$imdb_rating~movies$imdb_num_votes)
+```
+
+The relationship is not very linear, which is definitely not ideal, but for now let's just bear with it.
+
+###Model Diagnostics: normal residuals
+
+Next I will look at the distribution of residuals and see if it's roughly normal:
+
+```{r}
+hist(best_model$residuals)
+qqnorm(best_model$residuals)
+```
+
+The residual distribution is only slightly left skewed so it does not matter much.
+
+###Model Diagnostics: constant residual variability
+
+```{r}
+plot(best_model$residuals~best_model$fitted.values)
+```
+
+There is apparently a fan shape so the condition for constant residual variability is not met.
+
+###Model Diagnostics: independence among residuals
+
+Here I just plot the residuals against their order in the dataset, assuming the data collected in that order:
+
+```{r}
+plot(best_model$residuals)
+```
+
+There is not any significant pattern so this condition is met.
+
+In summary, all conditions for linear regression are met except for a constant variability of residual with respect to model predictions. So we have to be conservative about the model predictions.
+
+###Interpretation of coefficients
+
+First let's print out a summary of the selected model:
+
+```{r}
+summary(best_model)
+```
+
+First of all, we can see that all variables are significant (given a significance level of 0.05). Below I list all the specific interpretations.
+
+For the genre variable:
+
+1. The Art House & International genre has on average 0.81 higher rating than the reference level (Action & Adventure), all else equal.
+
+2. The Documentary genre has on average 1.72 higher rating than the reference level (Action & Adventure), all else equal.
+
+3. The Drama genre has on average 0.75 higher rating than the reference level (Action & Adventure), all else equal.
+
+4. The Musical & Performing Arts genre has on average 1.45 higher rating than the reference level (Action & Adventure), all else equal.
+
+5. The Mystery & Suspense genre has on average 0.49 higher rating than the reference level (Action & Adventure), all else equal.
+
+For the mpaa_rating variable:
+
+6. PG has on average 0.53 lower rating than the reference level (G), all else equal.
+
+7. PG-13 has on average 0.86 lower rating than the reference level (G), all else equal.
+
+8. R has on average 0.56 lower rating than the reference level (G), all else equal.
+
+For the variable number of votes on IMDB:
+
+9. For every additional vote, there is on average an increase of 0.0000035 in rating, all else equal.
+
+For the variable if nominated for best picture:
+
+10. The rating is on average 0.50 higher for movies nominated for best pictures, all else equal.
+
+For the variable if won best director:
+
+11. The rating is on average 0.31 higher for movies that won best directors, all else equal.
+* * *
+
+## Part 5: Prediction
+
+I found the following data of Secret Life of Pets on IMDB:
+
+```{r}
+newdata <- data.frame(title = "Secret Life of Pets", genre = "Animation", mpaa_rating = "PG", imdb_num_votes = 94419, best_pic_nom="no", best_dir_win="no")
+```
+
+The following predicts the IMDB rating for this movie with the selected model from above with an confidence level of 0.95:
+```{r}
+predict(best_model, newdata,interval = "prediction", level = 0.95)
+```
+
+Therefore we are 95% confident that the rating for Secret Life of Pets is between 3.89 and 7.46, on average.
+
+The data can be found from the following link: http://www.imdb.com/title/tt2709768/?ref_=fn_al_tt_2
+
+* * *
+
+## Part 6: Conclusion
+
+###Implications for movie popularity correlation factors
+
+To answer the research question raised at the beginning, the above analysis found that the attributes that most affect a movie's rating on IMDB are: genre, mpaa rating, number of votes on IMDB, if it is nominated for best picture, if it won the best director award.
+
+A number of very interesting implications arise from this analysis:
+
+I. Movies from certain genres receive significantly higher ratings than others. Genres that are associated with higher ratings: Documentary, Musical & Performing Arts, Art House & International, Drama, Mystery & Suspense (from high to low). Genres that are associated with lower ratings: Other, Action and Adventure, Comedy, Animation, Horror (from high to low).
+
+II. Movies with certain MPAA rating also receive significantly higher ratings than others. G and Unrated are associated with higher ratings while NC-17, PG, R and PG-13 (from high to low) are associated with lower ratings. 
+
+III. Movies with more votes on IMDB receive higher ratings than those with fewer votes, on average.
+
+IV. Movies that are nominated for best picture or won the best director receive significant higher ratings than others, while winning the best actor or best actress does not affect the rating.
+
+In summary, the factors of a movie that are most positively associated with its IMDB rating are: 
+
+1. a genre of Documentary or Musical & Performing Arts
+
+2. a G or Unrated MPAA rating
+
+3. many votes on IMDB
+
+4. have been nominated for best picture or won the best director award.
+
+###Shortcomings and pitfalls
+
+1. This data only accepts one genre type while a movie could have multiple genres. For example, Secret Life of Pets is Animation, Comedy and Adventure at the same time. The model could be biased failing to take this into consideration.
+
+2. The model developed above does not meet the condition of constant residual variability or linearity (between number of votes and ratings on IMDB). Therefore the model outputs and predictions cannot be fully trusted.
+
+###Future analysis
+
+In the future, more samples can be included to try and fix the problem of unconstant residual variability. We can also try dropping some explanatory variable or obtaining extra variables (e.g. additional genre variables) to see if it makes residual variability more constant. Certain non-parametric analyses that do not require constant residual variability can also be attempted.
